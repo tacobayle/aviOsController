@@ -1,0 +1,224 @@
+- name : configure openstack
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+
+  vars_files:
+    - "vars/params.yml"
+
+  vars:
+    OpenStackEnvAdmin:
+      OS_AUTH_URL: http://{{ openstack.ipEndPoint }}/identity
+      OS_PASSWORD: "{{ openstack.password }}"
+      OS_AUTH_TYPE: password
+      OS_IDENTITY_API_VERSION: 3
+      OS_PROJECT_DOMAIN_ID: default
+      OS_USER_DOMAIN_ID: default
+      OS_PROJECT_NAME: "admin"
+      OS_USERNAME: "{{ openstack.username }}"
+      OS_TENANT_NAME:  "admin"
+
+    OpenStackEnvAvi:
+      OS_AUTH_URL: http://{{ openstack.ipEndPoint }}/identity
+      OS_PASSWORD: "{{ openstack.password }}"
+      OS_AUTH_TYPE: password
+      OS_IDENTITY_API_VERSION: 3
+      OS_PROJECT_DOMAIN_ID: default
+      OS_USER_DOMAIN_ID: default
+      OS_PROJECT_NAME: "{{ openstack.project.name }}"
+      OS_USERNAME: "{{ openstack.username }}"
+      OS_TENANT_NAME:  "{{ openstack.project.name }}"
+
+  tasks:
+
+    - name: create a new project for Avi Control Plane
+      os_project:
+        state: present
+        name: "{{ openstack.project.name }}"
+        description: "{{ openstack.project.description }}"
+        enabled: True
+        domain_id: "{{ openstack.project.domain_id }}"
+      environment: "{{ OpenStackEnvAdmin }}"
+      when: openstack.project is defined
+
+    - name: "Grant an admin role on the user admin in the project {{ openstack.project.name }}"
+      os_user_role:
+        user: "{{ openstack.username }}"
+        role: admin
+        project: "{{ openstack.project.name }}"
+      environment: "{{ OpenStackEnvAdmin }}"
+      when: openstack.project is defined
+
+    - name: Create OpenStack Networks for provider project
+      os_network:
+        state: present
+        name: "{{ item.name }}"
+        external: "{{ item.external }}"
+        shared: "{{ item.shared }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      loop: "{{ openstack.networks }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.networks is defined
+
+    - name: Create OpenStack Subnets for provider project
+      os_subnet:
+        state: present
+        network_name: "{{ item.name }}"
+        name: "{{ item.subnet }}"
+        cidr: "{{ item.cidr }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      loop: "{{ openstack.networks }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.networks is defined
+
+    - name: Create an OpenStack router for Avi
+      os_router:
+        state: present
+        name: "router-{{ item.name }}"
+        network: public
+        interfaces:
+          - net: "{{ item.name }}"
+            subnet: "{{ item.subnet }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      loop: "{{ openstack.networks }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.networks is defined
+
+    - name: Create New security Group
+      os_security_group:
+        state: present
+        name: "{{ item.name }}"
+        description: "{{ item.description }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      loop: "{{ openstack.securityGroups }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.securityGroups is defined
+
+    - name: Adding rule Ingress
+      os_security_group_rule:
+        direction: ingress
+        security_group: "{{ item.0.name }}"
+        protocol: "{{ item.1.protocol }}"
+        port_range_min: "{{ item.1.port_range_min }}"
+        port_range_max: "{{ item.1.port_range_max }}"
+        remote_ip_prefix: "{{ item.1.remote_ip_prefix }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      with_subelements:
+        - "{{ openstack.securityGroups }}"
+        - rules
+      loop_control:
+        label: "{{ item.0.name }}"
+      when: openstack.securityGroups is defined
+
+    - name: Create OpenStack Ssh key
+      os_keypair:
+        state: present
+        name: "{{ item.name }}"
+        public_key_file: "{{ item.public_key_file }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      loop: "{{ openstack.key }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.key is defined
+
+    - name: Uploading a glance image
+      os_image:
+        name: "{{ item.name }}"
+        container_format: bare
+        disk_format: qcow2
+        state: present
+        filename: "{{ item.fileName }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      loop: "{{ openstack.glance }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.glance is defined
+
+    - name: "Create Flavor for Avi Control Plane"
+      os_nova_flavor:
+        state: present
+        name: "{{ item.name }}"
+        ram: "{{ item.ram }}"
+        vcpus: "{{ item.vcpus }}"
+        disk: "{{ item.disk }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      loop: "{{ openstack.flavor }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.flavor is defined
+
+    - name: "Create Neutron Port for fixed IP address for Avi controller"
+      os_port:
+        state: present
+        name: "portAvi-{{ item.name }}"
+        network: "{{ openstack.vm.network.controller }}"
+        fixed_ips:
+          - ip_address: "{{ item.ipAddr }}"
+      loop: "{{ openstack.vm.controller }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.flavor is defined
+      environment: "{{ OpenStackEnvAvi }}"
+
+    - name: Gather facts about a previously created image
+      os_image_facts:
+        image: "{{ openstack.vm.image.controller }}"
+      environment: "{{ OpenStackEnvAvi }}"
+
+    - name: Gather facts about previously created networks
+      os_networks_facts:
+        name: "{{ openstack.vm.network.controller }}"
+      environment: "{{ OpenStackEnvAvi }}"
+
+    - name: Gather facts about previously created flavor
+      os_flavor_facts:
+        name: "{{ openstack.vm.flavor.controller }}"
+      environment: "{{ OpenStackEnvAvi }}"
+
+    - name: Initialize a list for Neutron port
+      set_fact:
+        neutronAviPortList: []
+
+    - name: Gather facts about neutron ports
+      os_port_facts:
+        port: portAvi*
+      environment: "{{ OpenStackEnvAvi }}"
+
+    - debug: var=openstack_ports
+
+    - name: Append Neutron Port for each Avi Controller on a list
+      set_fact:
+        neutronAviPortList: "{{ neutronAviPortList }} + [ '{{ item.id }}' ]"
+      loop: "{{ openstack_ports }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - debug: var=neutronAviPortList
+
+    - name: Create a new instance for Avi controller
+      os_server:
+        state: present
+        name: "{{ item.0.name }}"
+        image: "{{ openstack_image.id }}"
+        timeout: 60
+        key_name: "{{ openstack.vm.key.controller }}"
+        floating_ip_pools: "{{ openstack.externalNetwork }}"
+        security_groups: "{{ openstack.vm.securitygroup.controller }}"
+        flavor: "{{ openstack_flavors.0.id }}"
+        nics:
+          - port-id: "{{ item.1 }}"
+        meta:
+          hostname: "{{ item.0.name }}"
+      environment: "{{ OpenStackEnvAvi }}"
+      with_together:
+        - "{{ openstack.vm.controller }}"
+        - "{{ neutronAviPortList }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: openstack.vm.controller is defined
+      environment: "{{ OpenStackEnvAvi }}"
