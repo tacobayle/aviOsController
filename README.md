@@ -1,6 +1,6 @@
 # aviOsController
 ## Prerequisites:
-2. Make sure openstacksdk is installed:
+1. Make sure openstacksdk is installed:
 ```
 pip install --user openstacksdk
 ```
