@@ -32,3 +32,4 @@ Playbooks have been tested against:
 - Openstack Pike, queens (devstack)
 
 ## Improvement:
+Make sure the quota are configured according to Avi controller needs. 
