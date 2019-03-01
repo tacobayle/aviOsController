@@ -18,12 +18,26 @@ openstack:
   glance:
     - name: Avi-Controller-Qcow2-Image
       fileName: /home/avi/bin/avi/controller-18.1.5-9249.qcow2
+    - name: Ubuntu-test-avi
+      fileName: /home/avi/bin/ubuntu/xenial-server-cloudimg-i386-disk1.img
 
   flavor:
-    - name: aviFlavor
+    - name: aviPoc
       ram: 24576
       vcpus: 8
-      disk: 100
+      disk: 64
+    - name: aviSmall
+      ram: 24576
+      vcpus: 8
+      disk: 128
+    - name: aviMedium
+      ram: 32768
+      vcpus: 16
+      disk: 512
+    - name: aviLarge
+      ram: 49152
+      vcpus: 24
+      disk: 1024
 
   key:
     - name: keyPairsAviController
@@ -57,9 +71,9 @@ openstack:
     network:
       controller: net-avicontroller
     image:
-      controller: Avi-Controller-Qcow2-Image
+      controller: Ubuntu-test-avi
     flavor:
-      controller: aviFlavor
+      controller: ds1G
     controller:
       - name: avicontroller1
         ipAddr: 192.168.10.11

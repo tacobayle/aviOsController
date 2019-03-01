@@ -219,6 +219,6 @@
         - "{{ openstack.vm.controller }}"
         - "{{ neutronAviPortList }}"
       loop_control:
-        label: "{{ item.name }}"
+        label: "{{ item.0.name }}"
       when: openstack.vm.controller is defined
       environment: "{{ OpenStackEnvAvi }}"
