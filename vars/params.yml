@@ -8,6 +8,7 @@ openstack:
     name: avicontroller
     description: Avi Control Plane
     domain_id: default
+
   networks:
     - name: net-avicontroller
       subnet: subnet-avicontroller
@@ -16,10 +17,10 @@ openstack:
       shared: false
 
   glance:
-    - name: Avi-Controller-Qcow2-Image
+    - name: Avi-Controller-Qcow2-Image-18.1.5
       fileName: /home/avi/bin/avi/controller-18.1.5-9249.qcow2
-    - name: Ubuntu-test-avi
-      fileName: /home/avi/bin/ubuntu/xenial-server-cloudimg-i386-disk1.img
+    # - name: Ubuntu-test-avi
+    #   fileName: /home/avi/bin/ubuntu/xenial-server-cloudimg-i386-disk1.img
 
   flavor:
     - name: aviPoc
@@ -71,9 +72,9 @@ openstack:
     network:
       controller: net-avicontroller
     image:
-      controller: Ubuntu-test-avi
+      controller: Avi-Controller-Qcow2-Image-18.1.5
     flavor:
-      controller: ds1G
+      controller: aviPoc
     controller:
       - name: avicontroller1
         ipAddr: 192.168.10.11

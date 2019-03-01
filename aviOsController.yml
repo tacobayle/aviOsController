@@ -1,4 +1,4 @@
-- name : configure openstack
+- name : configure openstack for Avi Controller
   hosts: localhost
   connection: local
   gather_facts: no
@@ -18,6 +18,17 @@
       OS_PROJECT_NAME: "admin"
       OS_USERNAME: "{{ openstack.username }}"
       OS_TENANT_NAME:  "admin"
+
+      # OS_AUTH_URL: http://a.b.c.d:5000/v3
+      # OS_PROJECT_DOMAIN_ID: XXXXXXXXXX
+      # OS_REGION_NAME: RegionOne
+      # OS_PROJECT_NAME: admin
+      # OS_USER_DOMAIN_NAME: XXXXXXXXXX
+      # OS_IDENTITY_API_VERSION: 3
+      # OS_INTERFACE: public
+      # OS_PASSWORD: XXXXXXXXXX
+      # OS_USERNAME: admin
+      # OS_PROJECT_ID: XXXXXXXXXX
 
     OpenStackEnvAvi:
       OS_AUTH_URL: http://{{ openstack.ipEndPoint }}/identity
@@ -40,6 +51,7 @@
         enabled: True
         domain_id: "{{ openstack.project.domain_id }}"
       environment: "{{ OpenStackEnvAdmin }}"
+      register: aviProject
       when: openstack.project is defined
 
     - name: "Grant an admin role on the user admin in the project {{ openstack.project.name }}"
@@ -50,7 +62,13 @@
       environment: "{{ OpenStackEnvAdmin }}"
       when: openstack.project is defined
 
-    - name: Create OpenStack Networks for provider project
+    - debug: var=aviProject
+
+    # - name: Configure the domain Id with a new project
+    #   set_fact:
+    #     OpenStackEnvAvi.OS_PROJECT_ID: "{{ aviProject.project.id }}"
+
+    - name: Create OpenStack Networks for Avi Controller
       os_network:
         state: present
         name: "{{ item.name }}"
@@ -62,7 +80,7 @@
         label: "{{ item.name }}"
       when: openstack.networks is defined
 
-    - name: Create OpenStack Subnets for provider project
+    - name: Create OpenStack Subnets for Avi Controller
       os_subnet:
         state: present
         network_name: "{{ item.name }}"
@@ -74,11 +92,11 @@
         label: "{{ item.name }}"
       when: openstack.networks is defined
 
-    - name: Create an OpenStack router for Avi
+    - name: Create an OpenStack router for Avi Controller
       os_router:
         state: present
         name: "router-{{ item.name }}"
-        network: public
+        network: "{{ openstack.externalNetwork }}"
         interfaces:
           - net: "{{ item.name }}"
             subnet: "{{ item.subnet }}"
@@ -159,6 +177,7 @@
         network: "{{ openstack.vm.network.controller }}"
         fixed_ips:
           - ip_address: "{{ item.ipAddr }}"
+        security_groups: "{{ openstack.vm.securitygroup.controller }}"
       loop: "{{ openstack.vm.controller }}"
       loop_control:
         label: "{{ item.name }}"
@@ -189,7 +208,7 @@
         port: portAvi*
       environment: "{{ OpenStackEnvAvi }}"
 
-    - debug: var=openstack_ports
+    #- debug: var=openstack_ports
 
     - name: Append Neutron Port for each Avi Controller on a list
       set_fact:
@@ -198,17 +217,16 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - debug: var=neutronAviPortList
+    #- debug: var=neutronAviPortList
 
     - name: Create a new instance for Avi controller
       os_server:
         state: present
         name: "{{ item.0.name }}"
         image: "{{ openstack_image.id }}"
-        timeout: 60
+        timeout: 240
         key_name: "{{ openstack.vm.key.controller }}"
         floating_ip_pools: "{{ openstack.externalNetwork }}"
-        security_groups: "{{ openstack.vm.securitygroup.controller }}"
         flavor: "{{ openstack_flavors.0.id }}"
         nics:
           - port-id: "{{ item.1 }}"
